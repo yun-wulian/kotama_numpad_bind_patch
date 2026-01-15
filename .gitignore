@@ -5,6 +5,7 @@
 # Local tooling / decompile scratch
 tools/
 _decompile_*/
+_release/
 
 # IDE/editor
 .vs/
