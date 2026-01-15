@@ -28,11 +28,11 @@ This project references the game's `BepInEx/core` and `BepInEx/interop` assembli
 Simplest setup:
 
 1. Clone this repo into your game folder so the hint paths resolve:
-   - `...\KotamaAcademyCitadel\Modding\NumpadProbe\`
+   - `...\KotamaAcademyCitadel\Modding\kotama_numpad_bind_patch\`
 2. Build:
-   - `dotnet build .\NumpadProbe\KotamaNumpadRebind.csproj -c Release`
+   - `dotnet build .\kotama_numpad_bind_patch\KotamaNumpadRebind.csproj -c Release`
 3. The output DLL is:
-   - `.\NumpadProbe\bin\Release\net6.0\Kotama.NumpadRebind.dll`
+   - `.\kotama_numpad_bind_patch\bin\Release\net6.0\Kotama.NumpadRebind.dll`
 
 In my local setup, the built DLL is deployed as:
 - `KotamaAcademyCitadel/BepInEx/plugins/Kotama.NumpadRebind.dll`
