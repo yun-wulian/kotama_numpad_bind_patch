@@ -64,5 +64,4 @@ Steps:
 ## Notes
 
 - Implementation notes live in `IMPLEMENTATION_MEMO.md`.
-- This repo does not include any game files, BepInEx files, or build outputs.
-
+- This repo does not commit any game files, BepInEx files, or build outputs; download prebuilt DLLs from GitHub Releases.

@@ -60,5 +60,4 @@
 ## 备注
 
 - 实现路径与逆向分析记录在 `IMPLEMENTATION_MEMO.md`。
-- 本仓库不包含任何游戏文件 / BepInEx 文件 / 构建产物。
-
+- 本仓库不提交任何游戏文件 / BepInEx 文件 / 构建产物；已编译 DLL 请到 GitHub Releases 下载。
