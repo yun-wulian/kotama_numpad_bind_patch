@@ -17,7 +17,7 @@ public sealed class NumpadRebindPlugin : BasePlugin
 {
     public const string PluginGuid = "com.yunwulian.kotama.numpad-rebind";
     public const string PluginName = "Kotama Numpad Rebind";
-    public const string PluginVersion = "0.2.16";
+    public const string PluginVersion = "0.2.17";
 
     internal static ManualLogSource LogSource;
 
@@ -308,6 +308,183 @@ internal static class NumpadPressText
     }
 }
 
+internal static class MouseSidePressText
+{
+    private static readonly Regex MouseButtonRegex = new(
+        @"(?ix)\b(?:mb|mouse)\s*([45])\b");
+
+    private static readonly Regex XButtonRegex = new(
+        @"(?ix)\bxbutton\s*([12])\b");
+
+    public static bool IsMouseSideRelated(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string v = value.Trim();
+        return v.Contains("<Mouse>/backButton", StringComparison.OrdinalIgnoreCase)
+            || v.Contains("<Mouse>/forwardButton", StringComparison.OrdinalIgnoreCase)
+            || v.Contains("backButton", StringComparison.OrdinalIgnoreCase)
+            || v.Contains("forwardButton", StringComparison.OrdinalIgnoreCase)
+            || MouseButtonRegex.IsMatch(v)
+            || XButtonRegex.IsMatch(v);
+    }
+
+    public static bool IsMouseSideControlPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string v = value.Trim();
+        if (!v.Contains("<Mouse>/", StringComparison.OrdinalIgnoreCase) && !v.StartsWith("/backButton", StringComparison.OrdinalIgnoreCase) &&
+            !v.StartsWith("/forwardButton", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return v.Contains("backButton", StringComparison.OrdinalIgnoreCase) || v.Contains("forwardButton", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string NormalizeToMouseControlPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        string v = value.Trim();
+        if (v.StartsWith("<Mouse>/", StringComparison.OrdinalIgnoreCase))
+        {
+            return v;
+        }
+
+        if (v.StartsWith("/backButton", StringComparison.OrdinalIgnoreCase))
+        {
+            return "<Mouse>" + v;
+        }
+
+        if (v.StartsWith("/forwardButton", StringComparison.OrdinalIgnoreCase))
+        {
+            return "<Mouse>" + v;
+        }
+
+        if (v.Contains("backButton", StringComparison.OrdinalIgnoreCase))
+        {
+            return "<Mouse>/backButton";
+        }
+
+        if (v.Contains("forwardButton", StringComparison.OrdinalIgnoreCase))
+        {
+            return "<Mouse>/forwardButton";
+        }
+
+        Match mb = MouseButtonRegex.Match(v);
+        if (mb.Success)
+        {
+            return mb.Groups[1].Value == "4" ? "<Mouse>/backButton" : "<Mouse>/forwardButton";
+        }
+
+        Match xb = XButtonRegex.Match(v);
+        if (xb.Success)
+        {
+            return xb.Groups[1].Value == "1" ? "<Mouse>/backButton" : "<Mouse>/forwardButton";
+        }
+
+        return v;
+    }
+
+    public static string ToDisplayName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        string v = value.Trim();
+        if (v.Contains("backButton", StringComparison.OrdinalIgnoreCase) ||
+            MouseButtonRegex.IsMatch(v) && MouseButtonRegex.Match(v).Groups[1].Value == "4" ||
+            XButtonRegex.IsMatch(v) && XButtonRegex.Match(v).Groups[1].Value == "1")
+        {
+            return "MB4";
+        }
+
+        if (v.Contains("forwardButton", StringComparison.OrdinalIgnoreCase) ||
+            MouseButtonRegex.IsMatch(v) && MouseButtonRegex.Match(v).Groups[1].Value == "5" ||
+            XButtonRegex.IsMatch(v) && XButtonRegex.Match(v).Groups[1].Value == "2")
+        {
+            return "MB5";
+        }
+
+        return v;
+    }
+}
+
+internal static class PatchedPressText
+{
+    public static bool IsPatchedRelated(string value)
+    {
+        return NumpadPressText.IsNumpadRelated(value) || MouseSidePressText.IsMouseSideRelated(value);
+    }
+
+    public static bool IsPatchedControlPath(string value)
+    {
+        return NumpadPressText.IsNumpadControlPath(value) || MouseSidePressText.IsMouseSideControlPath(value);
+    }
+
+    public static string NormalizeToControlPath(string value)
+    {
+        if (MouseSidePressText.IsMouseSideRelated(value) || MouseSidePressText.IsMouseSideControlPath(value))
+        {
+            return MouseSidePressText.NormalizeToMouseControlPath(value);
+        }
+
+        return NumpadPressText.NormalizeToKeyboardControlPath(value);
+    }
+
+    public static string ToDisplayName(string value)
+    {
+        if (MouseSidePressText.IsMouseSideRelated(value) || MouseSidePressText.IsMouseSideControlPath(value))
+        {
+            return MouseSidePressText.ToDisplayName(value);
+        }
+
+        return NumpadPressText.ToDisplayName(value);
+    }
+}
+
+internal static class PatchedDisplay
+{
+    public static InputDisData GetBindingDisData(string bindingKey)
+    {
+        if (MouseSidePressText.IsMouseSideRelated(bindingKey) || MouseSidePressText.IsMouseSideControlPath(bindingKey))
+        {
+            string normalizedKey = MouseSidePressText.NormalizeToMouseControlPath(bindingKey);
+
+            // Prefer a known-safe base lookup and keep PressTxt as the logical remap key.
+            try
+            {
+                InputDisData baseData = EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("Enter");
+                if (baseData != null)
+                {
+                    return InputDisDataClone.CloneWithPressText(baseData, normalizedKey);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return InputDisDataClone.CreateMinimal(normalizedKey);
+        }
+
+        return NumpadDisplay.GetBindingDisData(bindingKey);
+    }
+}
+
 internal static class NumpadDisplay
 {
     private static string ExtractNumpadToken(string bindingKey)
@@ -583,12 +760,12 @@ internal static class KeyboardUiSafe
             return false;
         }
 
-        if (!NumpadPressText.IsNumpadControlPath(overrideKey) && !NumpadPressText.IsNumpadRelated(overrideKey))
+        if (!PatchedPressText.IsPatchedControlPath(overrideKey) && !PatchedPressText.IsPatchedRelated(overrideKey))
         {
             return false;
         }
 
-        return TryApplyBindingTextOnly(keyboard, NumpadPressText.ToDisplayName(overrideKey));
+        return TryApplyBindingTextOnly(keyboard, PatchedPressText.ToDisplayName(overrideKey));
     }
 
     public static void TryClearBindingText(EscapeGame.UIGen.Keyboard keyboard)
@@ -617,9 +794,9 @@ internal static class NumpadBindingSalvage
             return false;
         }
 
-        if (NumpadPressText.IsNumpadRelated(formatKey) || NumpadPressText.IsNumpadControlPath(formatKey))
+        if (PatchedPressText.IsPatchedRelated(formatKey) || PatchedPressText.IsPatchedControlPath(formatKey))
         {
-            formatKey = NumpadPressText.NormalizeToKeyboardControlPath(formatKey);
+            formatKey = PatchedPressText.NormalizeToControlPath(formatKey);
         }
 
         cfg.UI_SettingKeyboard setting = null;
@@ -692,11 +869,11 @@ internal static class NumpadBindingSalvage
 
         try
         {
-            InputDisData data = NumpadDisplay.GetBindingDisData(formatKey);
+            InputDisData data = PatchedDisplay.GetBindingDisData(formatKey);
             if (data != null)
             {
                 keyboard.SetData(setting, inputActionName, originKey, data);
-                KeyboardUiSafe.TryApplyBindingTextOnly(keyboard, NumpadPressText.ToDisplayName(formatKey));
+                KeyboardUiSafe.TryApplyBindingTextOnly(keyboard, PatchedPressText.ToDisplayName(formatKey));
             }
         }
         catch
@@ -755,7 +932,7 @@ internal static class Patch_KeyboardBindingHelper_SaveOverride
             return;
         }
 
-        if (NumpadPressText.IsNumpadRelated(inputId) || NumpadPressText.IsNumpadControlPath(inputId))
+        if (PatchedPressText.IsPatchedRelated(inputId) || PatchedPressText.IsPatchedControlPath(inputId))
         {
             NumpadRebindPlugin.LogSource.LogInfo($"SaveOverride cnfId={cnfId} inputId=\"{inputId}\"");
         }
@@ -771,12 +948,12 @@ internal static class Patch_RebindingOperation_WithControlsExcluding
 {
     private static bool Prefix(InputActionRebindingExtensions.RebindingOperation __instance, string path, ref InputActionRebindingExtensions.RebindingOperation __result)
     {
-        if (!NumpadPressText.IsNumpadControlPath(path))
+        if (!PatchedPressText.IsPatchedControlPath(path))
         {
             return true;
         }
 
-        NumpadRebindPlugin.LogSource?.LogDebug($"Ignoring WithControlsExcluding(\"{path}\") to keep numpad keys bindable.");
+        NumpadRebindPlugin.LogSource?.LogDebug($"Ignoring WithControlsExcluding(\"{path}\") to keep extra keys bindable (numpad / mouse side).");
         __result = __instance;
         return false;
     }
@@ -796,7 +973,7 @@ internal static class Patch_InputBindingHelper_SwapBindingPreHookFilterKey
         for (int i = __result.Count - 1; i >= 0; i--)
         {
             string item = __result[i];
-            if (NumpadPressText.IsNumpadRelated(item) || NumpadPressText.IsNumpadControlPath(item))
+            if (PatchedPressText.IsPatchedRelated(item) || PatchedPressText.IsPatchedControlPath(item))
             {
                 __result.RemoveAt(i);
                 removed++;
@@ -815,7 +992,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_PreCheckCompositeCanOverrid
 {
     private static bool Prefix(string compositeKey, cfg.TbCfg.InputDeviceType deviceType, ref bool __result)
     {
-        if (!NumpadPressText.IsNumpadRelated(compositeKey) && !NumpadPressText.IsNumpadControlPath(compositeKey))
+        if (!PatchedPressText.IsPatchedRelated(compositeKey) && !PatchedPressText.IsPatchedControlPath(compositeKey))
         {
             return true;
         }
@@ -840,7 +1017,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
             return false;
         }
 
-        if (!NumpadPressText.IsNumpadRelated(formatKey) && !NumpadPressText.IsNumpadControlPath(formatKey))
+        if (!PatchedPressText.IsPatchedRelated(formatKey) && !PatchedPressText.IsPatchedControlPath(formatKey))
         {
             return true;
         }
@@ -875,7 +1052,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
             return;
         }
 
-        if (!NumpadPressText.IsNumpadRelated(formatKey) && !NumpadPressText.IsNumpadControlPath(formatKey))
+        if (!PatchedPressText.IsPatchedRelated(formatKey) && !PatchedPressText.IsPatchedControlPath(formatKey))
         {
             return;
         }
@@ -975,7 +1152,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
             {
                 // ignore
             }
-            KeyboardUiSafe.TryApplyBindingTextOnly(keyboard, NumpadPressText.ToDisplayName(formatKey));
+            KeyboardUiSafe.TryApplyBindingTextOnly(keyboard, PatchedPressText.ToDisplayName(formatKey));
 
             NumpadRebindPlugin.LogSource?.LogInfo(
                 $"Applied numpad binding: cnfId={cnfId} action=\"{inputActionName}\" origin=\"{originKey}\" new=\"{formatKey}\" allMaps={applyAllMaps} playUx={playUx}");
@@ -1034,11 +1211,11 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SwitchRebindingListen
                                 try { overrideKey = EscapeGame.UIGen.KeyboardBindingHelper.GetOverride(optionCnfId); } catch { /* ignore */ }
 
                                 if (!string.IsNullOrWhiteSpace(overrideKey) &&
-                                    (NumpadPressText.IsNumpadControlPath(overrideKey) || NumpadPressText.IsNumpadRelated(overrideKey)))
+                                    (PatchedPressText.IsPatchedControlPath(overrideKey) || PatchedPressText.IsPatchedRelated(overrideKey)))
                                 {
                                     try
                                     {
-                                        InputDisData disData = NumpadDisplay.GetBindingDisData(overrideKey);
+                                        InputDisData disData = PatchedDisplay.GetBindingDisData(overrideKey);
                                         if (disData != null)
                                         {
                                         // Use SetData to reset internal UI sub-states (including the "press any key"
@@ -1051,7 +1228,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SwitchRebindingListen
                                     // ignore
                                 }
 
-                                KeyboardUiSafe.TryApplyBindingTextOnly(optionItem, NumpadPressText.ToDisplayName(overrideKey));
+                                KeyboardUiSafe.TryApplyBindingTextOnly(optionItem, PatchedPressText.ToDisplayName(overrideKey));
                             }
                             else
                             {
@@ -1111,7 +1288,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_ListenRebindingAnyKey
         try
         {
             string path = context.control?.path;
-            if (!string.IsNullOrEmpty(path) && NumpadPressText.IsNumpadControlPath(path))
+            if (!string.IsNullOrEmpty(path) && PatchedPressText.IsPatchedControlPath(path))
             {
                 NumpadRebindPlugin.LogSource?.LogInfo($"ListenRebindingAnyKey: controlPath=\"{path}\" displayName=\"{context.control.displayName}\"");
             }
@@ -1128,7 +1305,7 @@ internal static class Patch_KeyboardBindingHelper_ContainsKey
 {
     private static bool Prefix(string pressTxt, ref bool __result)
     {
-        if (!NumpadPressText.IsNumpadRelated(pressTxt))
+        if (!PatchedPressText.IsPatchedRelated(pressTxt) && !PatchedPressText.IsPatchedControlPath(pressTxt))
         {
             return true;
         }
@@ -1146,8 +1323,15 @@ internal static class Patch_KeyboardBindingHelper_GetInputDisData
         try
         {
             __state = pressTxt;
-            if (!NumpadPressText.IsNumpadRelated(pressTxt))
+            if (!PatchedPressText.IsPatchedRelated(pressTxt) && !PatchedPressText.IsPatchedControlPath(pressTxt))
             {
+                return true;
+            }
+
+            if (MouseSidePressText.IsMouseSideRelated(pressTxt) || MouseSidePressText.IsMouseSideControlPath(pressTxt))
+            {
+                // Use a safe base entry so the UI can render without relying on a mouse icon table entry.
+                pressTxt = "Enter";
                 return true;
             }
 
@@ -1171,24 +1355,23 @@ internal static class Patch_KeyboardBindingHelper_GetInputDisData
         try
         {
             string normalizedKey = __state;
-            if (NumpadPressText.IsNumpadRelated(__state) || NumpadPressText.IsNumpadControlPath(__state))
+            if (PatchedPressText.IsPatchedRelated(__state) || PatchedPressText.IsPatchedControlPath(__state))
             {
-                normalizedKey = NumpadPressText.NormalizeToKeyboardControlPath(__state);
+                normalizedKey = PatchedPressText.NormalizeToControlPath(__state);
             }
 
             if (__result == null)
             {
-                if (NumpadPressText.IsNumpadRelated(__state))
+                if (PatchedPressText.IsPatchedRelated(__state) || PatchedPressText.IsPatchedControlPath(__state))
                 {
-                    // Avoid hard failure in UI if their table has no entry for a given numpad symbol.
-                    // IMPORTANT: don't return an empty-sprite payload (can trigger a native assert).
+                    // Avoid hard failure in UI if their table has no entry for a given key.
                     __result = InputDisDataClone.CreateMinimal(normalizedKey);
                 }
 
                 return;
             }
 
-            if (!NumpadPressText.IsNumpadRelated(__state))
+            if (!PatchedPressText.IsPatchedRelated(__state) && !PatchedPressText.IsPatchedControlPath(__state))
             {
                 return;
             }
@@ -1230,12 +1413,12 @@ internal static class Patch_Keyboard_SetData
                 return;
             }
 
-            if (!NumpadPressText.IsNumpadControlPath(overrideKey) && !NumpadPressText.IsNumpadRelated(overrideKey))
+            if (!PatchedPressText.IsPatchedControlPath(overrideKey) && !PatchedPressText.IsPatchedRelated(overrideKey))
             {
                 return;
             }
 
-            bindingData = NumpadDisplay.GetBindingDisData(overrideKey);
+            bindingData = PatchedDisplay.GetBindingDisData(overrideKey);
         }
         catch (Exception ex)
         {
@@ -1280,10 +1463,8 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 return true;
             }
 
-            // Prefer the persisted override key (stable) unless it disagrees with the live `changeData`.
-            // The game may call SetCurrentBtn before SaveOverride/FlushRemapKeyboard, and during swap/conflict
-            // handling the order can briefly invert; in that window an old numpad override must not override a
-            // newly-bound native key (e.g. LeftShift).
+            // Prefer the persisted override key (stable); if it's absent, fall back to `changeData`
+            // because the game may call SetCurrentBtn before SaveOverride/FlushRemapKeyboard.
             string candidateKey = string.Empty;
             try
             {
@@ -1311,16 +1492,16 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 return true;
             }
 
-            if (!NumpadPressText.IsNumpadControlPath(candidateKey) && !NumpadPressText.IsNumpadRelated(candidateKey))
+            if (!PatchedPressText.IsPatchedControlPath(candidateKey) && !PatchedPressText.IsPatchedRelated(candidateKey))
             {
                 return true;
             }
 
-            // Skip the original implementation for numpad bindings to avoid:
+            // Skip the original implementation for patched keys (numpad / mouse side buttons) to avoid:
             // FairyGUI.NTexture..ctor(sprite:null) -> NullReferenceException
             // which causes the UI to remain stuck on "输入任意键".
             __state = candidateKey;
-            changeData = NumpadDisplay.GetBindingDisData(candidateKey);
+            changeData = PatchedDisplay.GetBindingDisData(candidateKey);
             return true;
         }
         catch
@@ -1345,7 +1526,7 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 return;
             }
 
-            KeyboardUiSafe.TryApplyBindingTextOnly(__instance, NumpadPressText.ToDisplayName(__state));
+            KeyboardUiSafe.TryApplyBindingTextOnly(__instance, PatchedPressText.ToDisplayName(__state));
         }
         catch
         {
@@ -1398,7 +1579,7 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 }
             }
 
-            if (!NumpadPressText.IsNumpadControlPath(candidateKey) && !NumpadPressText.IsNumpadRelated(candidateKey))
+            if (!PatchedPressText.IsPatchedControlPath(candidateKey) && !PatchedPressText.IsPatchedRelated(candidateKey))
             {
                 return __exception;
             }
@@ -1412,7 +1593,7 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 // ignore
             }
 
-            KeyboardUiSafe.TryApplyBindingTextOnly(__instance, NumpadPressText.ToDisplayName(candidateKey));
+            KeyboardUiSafe.TryApplyBindingTextOnly(__instance, PatchedPressText.ToDisplayName(candidateKey));
             return null;
         }
         catch

@@ -5,6 +5,7 @@ This repo contains a BepInEx IL2CPP plugin that removes the game's “numpad not
 ## Features
 
 - Allows binding numpad keys like `Numpad 0–9`, `Numpad * / + -`, etc.
+- Allows binding mouse side buttons (typically `MB4` / `MB5`).
 - Preserves the game's conflict/swap behavior (the mod keeps `PressTxt` as a logical key path like `<Keyboard>/numpad4`).
 - Avoids the missing-sprite crash/stuck UI state when the game tries to render numpad icons.
 - Shows a text fallback for numpad binds (e.g. `Numpad 4`) while keeping native keys in icon mode.
@@ -40,4 +41,3 @@ In my local setup, the built DLL is deployed as:
 
 - Implementation notes and the “why” behind the patches live in `IMPLEMENTATION_MEMO.md`.
 - This repo intentionally does not include any game files, BepInEx binaries, or build outputs.
-
