@@ -30,9 +30,9 @@ Simplest setup:
 1. Clone this repo into your game folder so the hint paths resolve:
    - `...\KotamaAcademyCitadel\Modding\NumpadProbe\`
 2. Build:
-   - `dotnet build .\NumpadProbe\NumpadProbe.csproj -c Release`
+   - `dotnet build .\NumpadProbe\KotamaNumpadRebind.csproj -c Release`
 3. The output DLL is:
-   - `.\NumpadProbe\bin\Release\net6.0\NumpadProbe.dll`
+   - `.\NumpadProbe\bin\Release\net6.0\Kotama.NumpadRebind.dll`
 
 In my local setup, the built DLL is deployed as:
 - `KotamaAcademyCitadel/BepInEx/plugins/Kotama.NumpadRebind.dll`
