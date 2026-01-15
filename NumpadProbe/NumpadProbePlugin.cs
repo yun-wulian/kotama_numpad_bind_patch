@@ -17,7 +17,7 @@ public sealed class NumpadRebindPlugin : BasePlugin
 {
     public const string PluginGuid = "com.yunwulian.kotama.numpad-rebind";
     public const string PluginName = "Kotama Numpad Rebind";
-    public const string PluginVersion = "0.2.17";
+    public const string PluginVersion = "0.2.18";
 
     internal static ManualLogSource LogSource;
 
@@ -73,40 +73,6 @@ internal static class NumpadPressText
         }
 
         string v = pressTxt.Trim();
-
-        Match digit = NumpadDigitRegex.Match(v);
-        if (digit.Success)
-        {
-            mapped = digit.Groups[1].Value;
-            return true;
-        }
-
-        // Common patterns from InputSystem display names / various UIs.
-        if (v.Contains("numpad", StringComparison.OrdinalIgnoreCase) ||
-            v.Contains("keypad", StringComparison.OrdinalIgnoreCase))
-        {
-            string normalized = v
-                .Replace("Keypad", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("Numpad", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("NumPad", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("Num Pad", "", StringComparison.OrdinalIgnoreCase)
-                .Trim();
-
-            mapped = normalized switch
-            {
-                "Enter" or "Return" => "Enter",
-                "Plus" or "+" => "+",
-                "Minus" or "-" => "-",
-                "Multiply" or "*" => "*",
-                "Divide" or "/" => "/",
-                "Period" or "." => ".",
-                "Equals" or "=" => "=",
-                "NumLock" or "Num Lock" => "NumLock",
-                _ => normalized,
-            };
-
-            return !string.Equals(mapped, pressTxt, StringComparison.Ordinal);
-        }
 
         if (v.Contains("<Keyboard>/numpad", StringComparison.OrdinalIgnoreCase))
         {
@@ -170,6 +136,48 @@ internal static class NumpadPressText
 
             mapped = "Enter";
             return true; // fallback
+        }
+
+        Match digit = NumpadDigitRegex.Match(v);
+        if (digit.Success)
+        {
+            mapped = digit.Groups[1].Value;
+            return true;
+        }
+
+        // Common patterns from InputSystem display names / various UIs.
+        if (v.Contains("numpad", StringComparison.OrdinalIgnoreCase) ||
+            v.Contains("keypad", StringComparison.OrdinalIgnoreCase))
+        {
+            string normalized = v
+                .Replace("Keypad", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("Numpad", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("NumPad", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("Num Pad", "", StringComparison.OrdinalIgnoreCase)
+                .Trim();
+
+            // If we stripped down a control path like "<Keyboard>/numpad5" => "<Keyboard>/5",
+            // keep only the leaf token.
+            int slash = normalized.LastIndexOf('/');
+            if (slash >= 0 && slash + 1 < normalized.Length)
+            {
+                normalized = normalized[(slash + 1)..].Trim();
+            }
+
+            mapped = normalized switch
+            {
+                "Enter" or "Return" => "Enter",
+                "Plus" or "+" => "+",
+                "Minus" or "-" => "-",
+                "Multiply" or "*" => "*",
+                "Divide" or "/" => "/",
+                "Period" or "." => ".",
+                "Equals" or "=" => "=",
+                "NumLock" or "Num Lock" => "NumLock",
+                _ => normalized,
+            };
+
+            return !string.Equals(mapped, pressTxt, StringComparison.Ordinal);
         }
 
         return false;
@@ -418,6 +426,24 @@ internal static class NumpadDisplay
             {
                 // ignore
             }
+        }
+
+        // IMPORTANT: Do not return an object with empty sprite fields here.
+        // Native `Keyboard.SetCurrentBtn` can hit a fatal assert path when the binding data doesn't
+        // resolve to a valid texture. Always fall back to a known-safe entry and only override PressTxt.
+        try
+        {
+            InputDisData fallback = EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("Enter")
+                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("0")
+                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("1");
+            if (fallback != null)
+            {
+                return InputDisDataClone.CloneWithPressText(fallback, normalizedKey);
+            }
+        }
+        catch
+        {
+            // ignore
         }
 
         return InputDisDataClone.CreateMinimal(normalizedKey);
@@ -749,10 +775,27 @@ internal static class InputDisDataClone
 
     public static InputDisData CreateMinimal(string pressTxt)
     {
+        // Never return a binding payload with empty sprite fields if we can avoid it.
+        // Native `Keyboard.SetCurrentBtn` may hit a fatal assert path when the texture can't be resolved.
+        try
+        {
+            InputDisData fallback = EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("Enter")
+                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("0")
+                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("1");
+            if (fallback != null)
+            {
+                return CloneWithPressText(fallback, pressTxt);
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
         IntPtr ptr = IL2CPP.il2cpp_object_new(Il2CppClassPointerStore<InputDisData>.NativeClassPtr);
         InputDisData data = new(ptr)
         {
-            InputID = "Numpad",
+            InputID = "Keyboard",
             ClickImage = string.Empty,
             PressBotImage = string.Empty,
             PressMidImage = string.Empty,
@@ -1224,6 +1267,7 @@ internal static class Patch_KeyboardBindingHelper_GetInputDisData
                 if (NumpadPressText.IsNumpadRelated(__state))
                 {
                     // Avoid hard failure in UI if their table has no entry for a given numpad symbol.
+                    // IMPORTANT: don't return an empty-sprite payload (can trigger a native assert).
                     __result = InputDisDataClone.CreateMinimal(normalizedKey);
                 }
 
@@ -1254,13 +1298,6 @@ internal static class Patch_Keyboard_SetData
         {
             if (settingData == null || settingData.Id == 0)
             {
-                return;
-            }
-
-            if (RebindingUiState.IsActiveFor(__instance) || RebindingUiState.IsActiveFor(settingData.Id))
-            {
-                // While rebinding, let the game's UI drive the "press any key" prompt and transitions.
-                // Forcing numpad-safe bindingData here can lead to prompt overlay glitches.
                 return;
             }
 
