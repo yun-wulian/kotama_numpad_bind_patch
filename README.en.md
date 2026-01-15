@@ -22,7 +22,12 @@ while keeping the in-game keybind UI stable (text fallback when icon resources a
 
 - KotamaAcademyCitadel (Unity 2022.3, IL2CPP)
 - **BepInEx 6 (IL2CPP build)**
-  - Download / 下载: https://github.com/BepInEx/BepInEx/releases
+  - Official Releases (stable): https://github.com/BepInEx/BepInEx/releases
+  - BepInEx build site (recommended for IL2CPP bleeding-edge builds): https://builds.bepinex.dev/
+  - Project page (bepinex_be): https://builds.bepinex.dev/projects/bepinex_be
+  - Known-good build (Windows x64 / IL2CPP metadata v31):
+    - `BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.752+dd0655f.zip`
+    - https://builds.bepinex.dev/projects/bepinex_be/752/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.752%2Bdd0655f.zip
   - Make sure you download the `Unity.IL2CPP` package for your platform (e.g. Windows x64 IL2CPP zip).
 
 ## Install
@@ -63,5 +68,4 @@ Steps:
 
 ## Notes
 
-- Implementation notes live in `IMPLEMENTATION_MEMO.md`.
 - This repo does not commit any game files, BepInEx files, or build outputs; download prebuilt DLLs from GitHub Releases.

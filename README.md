@@ -17,7 +17,12 @@
 
 - 游戏：KotamaAcademyCitadel（Unity 2022.3，IL2CPP）
 - **BepInEx 6（IL2CPP 版本）**
-  - 下载 / Download: https://github.com/BepInEx/BepInEx/releases
+  - 官方 Releases（稳定版）：https://github.com/BepInEx/BepInEx/releases
+  - BepInEx 构建站（推荐：IL2CPP 最新 build）：https://builds.bepinex.dev/
+  - 项目页（bepinex_be）：https://builds.bepinex.dev/projects/bepinex_be
+  - 已验证可用（Windows x64 / IL2CPP metadata v31）：
+    - `BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.752+dd0655f.zip`
+    - https://builds.bepinex.dev/projects/bepinex_be/752/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.752%2Bdd0655f.zip
   - 注意：请选择 `Unity.IL2CPP` 的发行包（例如 Windows x64 的 IL2CPP 压缩包）。
 
 ## 安装
@@ -59,5 +64,4 @@
 
 ## 备注
 
-- 实现路径与逆向分析记录在 `IMPLEMENTATION_MEMO.md`。
 - 本仓库不提交任何游戏文件 / BepInEx 文件 / 构建产物；已编译 DLL 请到 GitHub Releases 下载。
