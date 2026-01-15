@@ -1,59 +1,64 @@
-# Kotama Academy Citadel — Numpad Bind Patch (IL2CPP)
+# KotamaAcademyCitadel 小键盘/鼠标侧键绑定补丁（IL2CPP / BepInEx6）
 
-This repo contains a BepInEx IL2CPP plugin that removes the game's “numpad not bindable” restriction and makes numpad bindings actually work in-game, while keeping the keybind UI usable.
+[English README](README.en.md)
 
-## Features
+本项目是一个 **BepInEx IL2CPP 插件**，用于修复《KotamaAcademyCitadel / Kotama Academy Citadel》里 **小键盘（Numpad）无法绑定**的问题，并额外支持 **鼠标侧键（MB4/MB5）** 绑定；同时尽量避免按键设置 UI 因资源缺失导致显示异常。
 
-- Allows binding numpad keys like `Numpad 0–9`, `Numpad * / + -`, etc.
-- Allows binding mouse side buttons (typically `MB4` / `MB5`).
-- Preserves the game's conflict/swap behavior (the mod keeps `PressTxt` as a logical key path like `<Keyboard>/numpad4`).
-- Avoids the missing-sprite crash/stuck UI state when the game tries to render numpad icons.
-- Shows a text fallback for numpad binds (e.g. `Numpad 4`) while keeping native keys in icon mode.
+![实测截图](E.G.png)
 
-## Requirements
+## 功能
 
-- Kotama Academy Citadel (Unity 2022.3 IL2CPP)
-- BepInEx 6 (IL2CPP build). Tested with `BepInEx 6.0.0-be.752`.
+- 支持绑定小键盘：`Numpad 0-9`、`Numpad * / + -`、`Numpad Enter` 等。
+- 支持绑定鼠标侧键：`MB4` / `MB5`（InputSystem 的 `<Mouse>/backButton` / `<Mouse>/forwardButton`）。
+- 保留游戏原生的冲突/交换逻辑（我们保持 `PressTxt` 为逻辑控制路径，比如 `<Keyboard>/numpad4`）。
+- 针对 UI 资源缺失做了“文本兜底显示”，避免出现卡在“输入任意键”等状态。
 
-## Install
+## 依赖
 
-1. Build the plugin DLL (see below), or use your locally built `Kotama.NumpadRebind.dll`.
-2. Copy it to: `KotamaAcademyCitadel/BepInEx/plugins/Kotama.NumpadRebind.dll`
-3. Launch the game.
+- 游戏：KotamaAcademyCitadel（Unity 2022.3，IL2CPP）
+- **BepInEx 6（IL2CPP 版本）**
+  - 下载 / Download: https://github.com/BepInEx/BepInEx/releases
+  - 注意：请选择 `Unity.IL2CPP` 的发行包（例如 Windows x64 的 IL2CPP 压缩包）。
 
-## Build (recommended workflow)
+## 安装
 
-This project references the game's `BepInEx/core` and `BepInEx/interop` assemblies via relative paths.
+1. 安装 BepInEx 6（IL2CPP）。
+2. 获取插件 DLL（自行编译或使用你本地构建出来的）：`Kotama.NumpadRebind.dll`。
+3. 把 DLL 放到游戏目录：`KotamaAcademyCitadel\BepInEx\plugins\Kotama.NumpadRebind.dll`
+4. 启动游戏。
 
-Simplest setup:
+## 编译（推荐）
 
-1. Clone this repo into your game folder so the hint paths resolve:
+本工程通过相对路径引用游戏目录下的 `BepInEx/core` 与 `BepInEx/interop` 程序集，因此最省事的方式是把仓库放在游戏目录的 `Modding` 下。
+
+示例：
+
+1. 把仓库放到（或克隆到）游戏目录：
    - `...\KotamaAcademyCitadel\Modding\kotama_numpad_bind_patch\`
-2. Build:
+2. 编译：
    - `dotnet build .\kotama_numpad_bind_patch\KotamaNumpadRebind.csproj -c Release`
-3. The output DLL is:
+3. 产物：
    - `.\kotama_numpad_bind_patch\bin\Release\net6.0\Kotama.NumpadRebind.dll`
 
-In my local setup, the built DLL is deployed as:
-- `KotamaAcademyCitadel/BepInEx/plugins/Kotama.NumpadRebind.dll`
+## 常见问题（重要）
 
-## Notes
+### 按键设置菜单消失 / 设置存档损坏
 
-- Implementation notes and the “why” behind the patches live in `IMPLEMENTATION_MEMO.md`.
-- This repo intentionally does not include any game files, BepInEx binaries, or build outputs.
+如果你在“按键设置界面等待输入（输入任意键）”的时候直接 `Alt+F4` 强退游戏，可能导致 **设置覆盖文件**写入中断，从而出现“按键设置界面消失/无法打开”的现象。
 
-## Troubleshooting
+你可以在 **不影响游戏存档进度** 的情况下，单独重置按键/设置覆盖：
 
-### Settings menu missing / keybind settings corrupted
+- 删除或重命名这个文件：
+  - `C:\Users\<username>\AppData\LocalLow\AtomStringCompany\KotamaAcademyCitadel\<steamid>\settings.json`
 
-If the keybind/settings menu disappears (often after force-quitting the game while the keybind UI is waiting for input), your **settings override file** may be corrupted.
+推荐步骤：
 
-You can safely reset *only* the settings/keybind overrides without touching your game save progress by removing/renaming this file:
+1. 退出游戏。
+2. 把 `settings.json` 重命名为 `settings.json.bak`（或直接删除）。
+3. 重新启动游戏，文件会自动重建。
 
-- `C:\Users\<username>\AppData\LocalLow\AtomStringCompany\KotamaAcademyCitadel\<steamid>\settings.json`
+## 备注
 
-Recommended steps:
+- 实现路径与逆向分析记录在 `IMPLEMENTATION_MEMO.md`。
+- 本仓库不包含任何游戏文件 / BepInEx 文件 / 构建产物。
 
-1. Exit the game.
-2. Rename `settings.json` to `settings.json.bak` (or delete it).
-3. Launch the game again — it will regenerate a fresh settings file.
