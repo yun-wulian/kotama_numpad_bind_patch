@@ -6,6 +6,7 @@
 tools/
 _decompile_*/
 _release/
+IMPLEMENTATION_MEMO.md
 
 # IDE/editor
 .vs/
