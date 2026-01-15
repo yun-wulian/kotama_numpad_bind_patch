@@ -17,7 +17,7 @@ public sealed class NumpadRebindPlugin : BasePlugin
 {
     public const string PluginGuid = "com.yunwulian.kotama.numpad-rebind";
     public const string PluginName = "Kotama Numpad Rebind";
-    public const string PluginVersion = "0.2.18";
+    public const string PluginVersion = "0.2.16";
 
     internal static ManualLogSource LogSource;
 
@@ -73,6 +73,39 @@ internal static class NumpadPressText
         }
 
         string v = pressTxt.Trim();
+
+        Match digit = NumpadDigitRegex.Match(v);
+        if (digit.Success)
+        {
+            mapped = digit.Groups[1].Value;
+            return true;
+        }
+
+        if (v.Contains("numpad", StringComparison.OrdinalIgnoreCase) ||
+            v.Contains("keypad", StringComparison.OrdinalIgnoreCase))
+        {
+            string normalized = v
+                .Replace("Keypad", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("Numpad", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("NumPad", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("Num Pad", "", StringComparison.OrdinalIgnoreCase)
+                .Trim();
+
+            mapped = normalized switch
+            {
+                "Enter" or "Return" => "Enter",
+                "Plus" or "+" => "+",
+                "Minus" or "-" => "-",
+                "Multiply" or "*" => "*",
+                "Divide" or "/" => "/",
+                "Period" or "." => ".",
+                "Equals" or "=" => "=",
+                "NumLock" or "Num Lock" => "NumLock",
+                _ => normalized,
+            };
+
+            return !string.Equals(mapped, pressTxt, StringComparison.Ordinal);
+        }
 
         if (v.Contains("<Keyboard>/numpad", StringComparison.OrdinalIgnoreCase))
         {
@@ -136,48 +169,6 @@ internal static class NumpadPressText
 
             mapped = "Enter";
             return true; // fallback
-        }
-
-        Match digit = NumpadDigitRegex.Match(v);
-        if (digit.Success)
-        {
-            mapped = digit.Groups[1].Value;
-            return true;
-        }
-
-        // Common patterns from InputSystem display names / various UIs.
-        if (v.Contains("numpad", StringComparison.OrdinalIgnoreCase) ||
-            v.Contains("keypad", StringComparison.OrdinalIgnoreCase))
-        {
-            string normalized = v
-                .Replace("Keypad", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("Numpad", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("NumPad", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("Num Pad", "", StringComparison.OrdinalIgnoreCase)
-                .Trim();
-
-            // If we stripped down a control path like "<Keyboard>/numpad5" => "<Keyboard>/5",
-            // keep only the leaf token.
-            int slash = normalized.LastIndexOf('/');
-            if (slash >= 0 && slash + 1 < normalized.Length)
-            {
-                normalized = normalized[(slash + 1)..].Trim();
-            }
-
-            mapped = normalized switch
-            {
-                "Enter" or "Return" => "Enter",
-                "Plus" or "+" => "+",
-                "Minus" or "-" => "-",
-                "Multiply" or "*" => "*",
-                "Divide" or "/" => "/",
-                "Period" or "." => ".",
-                "Equals" or "=" => "=",
-                "NumLock" or "Num Lock" => "NumLock",
-                _ => normalized,
-            };
-
-            return !string.Equals(mapped, pressTxt, StringComparison.Ordinal);
         }
 
         return false;
@@ -428,24 +419,6 @@ internal static class NumpadDisplay
             }
         }
 
-        // IMPORTANT: Do not return an object with empty sprite fields here.
-        // Native `Keyboard.SetCurrentBtn` can hit a fatal assert path when the binding data doesn't
-        // resolve to a valid texture. Always fall back to a known-safe entry and only override PressTxt.
-        try
-        {
-            InputDisData fallback = EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("Enter")
-                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("0")
-                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("1");
-            if (fallback != null)
-            {
-                return InputDisDataClone.CloneWithPressText(fallback, normalizedKey);
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-
         return InputDisDataClone.CreateMinimal(normalizedKey);
     }
 }
@@ -615,24 +588,6 @@ internal static class KeyboardUiSafe
             return false;
         }
 
-        // The game's swap/conflict logic can briefly update the UI row (_bindingData) before the override
-        // store is updated. If they disagree, trust the live bindingData to avoid showing stale numpad text
-        // (e.g. binding to LeftShift but still showing Numpad * on the first attempt).
-        try
-        {
-            string liveKey = keyboard._bindingData?.PressTxt ?? keyboard._bindingData?.InputID ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(liveKey) &&
-                !NumpadPressText.IsNumpadControlPath(liveKey) &&
-                !NumpadPressText.IsNumpadRelated(liveKey))
-            {
-                return false;
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-
         return TryApplyBindingTextOnly(keyboard, NumpadPressText.ToDisplayName(overrideKey));
     }
 
@@ -775,27 +730,10 @@ internal static class InputDisDataClone
 
     public static InputDisData CreateMinimal(string pressTxt)
     {
-        // Never return a binding payload with empty sprite fields if we can avoid it.
-        // Native `Keyboard.SetCurrentBtn` may hit a fatal assert path when the texture can't be resolved.
-        try
-        {
-            InputDisData fallback = EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("Enter")
-                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("0")
-                ?? EscapeGame.UIGen.KeyboardBindingHelper.GetInputDisData("1");
-            if (fallback != null)
-            {
-                return CloneWithPressText(fallback, pressTxt);
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-
         IntPtr ptr = IL2CPP.il2cpp_object_new(Il2CppClassPointerStore<InputDisData>.NativeClassPtr);
         InputDisData data = new(ptr)
         {
-            InputID = "Keyboard",
+            InputID = "Numpad",
             ClickImage = string.Empty,
             PressBotImage = string.Empty,
             PressMidImage = string.Empty,
@@ -1098,30 +1036,6 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SwitchRebindingListen
                                 if (!string.IsNullOrWhiteSpace(overrideKey) &&
                                     (NumpadPressText.IsNumpadControlPath(overrideKey) || NumpadPressText.IsNumpadRelated(overrideKey)))
                                 {
-                                    // If the row's live binding already reflects a non-numpad key, the persisted override
-                                    // is likely stale (swap/conflict updates can be reordered). Trust the live binding to
-                                    // avoid first-attempt mis-displays like LeftShift showing as "Numpad *".
-                                    try
-                                    {
-                                        string liveKey = existingBinding?.PressTxt ?? existingBinding?.InputID ?? string.Empty;
-                                        if (!string.IsNullOrWhiteSpace(liveKey) &&
-                                            !NumpadPressText.IsNumpadControlPath(liveKey) &&
-                                            !NumpadPressText.IsNumpadRelated(liveKey))
-                                        {
-                                            if (existingBinding != null)
-                                            {
-                                                optionItem.SetData(optionItem._tbSettingKeyboard, optionItem._inputActionName, optionItem._originBindingBtn, existingBinding);
-                                            }
-
-                                            KeyboardUiSafe.TryRestoreIconMode(optionItem);
-                                            return;
-                                        }
-                                    }
-                                    catch
-                                    {
-                                        // ignore
-                                    }
-
                                     try
                                     {
                                         InputDisData disData = NumpadDisplay.GetBindingDisData(overrideKey);
@@ -1292,7 +1206,7 @@ internal static class Patch_KeyboardBindingHelper_GetInputDisData
 [HarmonyPatch(typeof(EscapeGame.UIGen.Keyboard), nameof(EscapeGame.UIGen.Keyboard.SetData))]
 internal static class Patch_Keyboard_SetData
 {
-    private static void Prefix(EscapeGame.UIGen.Keyboard __instance, cfg.UI_SettingKeyboard settingData, ref InputDisData bindingData)
+    private static void Prefix(cfg.UI_SettingKeyboard settingData, ref InputDisData bindingData)
     {
         try
         {
@@ -1319,23 +1233,6 @@ internal static class Patch_Keyboard_SetData
             if (!NumpadPressText.IsNumpadControlPath(overrideKey) && !NumpadPressText.IsNumpadRelated(overrideKey))
             {
                 return;
-            }
-
-            // If the incoming bindingData clearly represents a native key, the persisted override can be
-            // temporarily stale during swap/conflict resolution. Trust the live bindingData in that case.
-            try
-            {
-                string incomingKey = bindingData?.PressTxt ?? bindingData?.InputID ?? string.Empty;
-                if (!string.IsNullOrWhiteSpace(incomingKey) &&
-                    !NumpadPressText.IsNumpadControlPath(incomingKey) &&
-                    !NumpadPressText.IsNumpadRelated(incomingKey))
-                {
-                    return;
-                }
-            }
-            catch
-            {
-                // ignore
             }
 
             bindingData = NumpadDisplay.GetBindingDisData(overrideKey);
@@ -1397,31 +1294,11 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 // ignore
             }
 
-            string liveKey = string.Empty;
-            try
-            {
-                liveKey = changeData?.PressTxt ?? changeData?.InputID ?? string.Empty;
-            }
-            catch
-            {
-                liveKey = string.Empty;
-            }
-
-            if (!string.IsNullOrWhiteSpace(candidateKey) &&
-                (NumpadPressText.IsNumpadControlPath(candidateKey) || NumpadPressText.IsNumpadRelated(candidateKey)) &&
-                !string.IsNullOrWhiteSpace(liveKey) &&
-                !NumpadPressText.IsNumpadControlPath(liveKey) &&
-                !NumpadPressText.IsNumpadRelated(liveKey))
-            {
-                // Stale override; use live key for this refresh.
-                candidateKey = liveKey;
-            }
-
             if (string.IsNullOrWhiteSpace(candidateKey))
             {
                 try
                 {
-                    candidateKey = liveKey;
+                    candidateKey = changeData?.PressTxt ?? changeData?.InputID ?? string.Empty;
                 }
                 catch
                 {
@@ -1509,40 +1386,11 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 }
             }
 
-            string liveKey = string.Empty;
-            try
-            {
-                liveKey = changeData?.PressTxt ?? changeData?.InputID ?? string.Empty;
-            }
-            catch
-            {
-                liveKey = string.Empty;
-            }
-
-            if (!string.IsNullOrWhiteSpace(candidateKey) &&
-                (NumpadPressText.IsNumpadControlPath(candidateKey) || NumpadPressText.IsNumpadRelated(candidateKey)) &&
-                !string.IsNullOrWhiteSpace(liveKey) &&
-                !NumpadPressText.IsNumpadControlPath(liveKey) &&
-                !NumpadPressText.IsNumpadRelated(liveKey))
-            {
-                // Stale override during swap/conflict reordering: the live key is native. Swallow the sprite
-                // exception and restore the default icon mode instead of drawing stale numpad text.
-                try
-                {
-                    KeyboardUiSafe.TryRestoreIconMode(__instance);
-                    return null;
-                }
-                catch
-                {
-                    return null;
-                }
-            }
-
             if (string.IsNullOrWhiteSpace(candidateKey))
             {
                 try
                 {
-                    candidateKey = liveKey;
+                    candidateKey = changeData?.PressTxt ?? changeData?.InputID ?? string.Empty;
                 }
                 catch
                 {
@@ -1553,6 +1401,15 @@ internal static class Patch_Keyboard_SetCurrentBtn
             if (!NumpadPressText.IsNumpadControlPath(candidateKey) && !NumpadPressText.IsNumpadRelated(candidateKey))
             {
                 return __exception;
+            }
+
+            try
+            {
+                __instance?.CleanCurrentBtn();
+            }
+            catch
+            {
+                // ignore
             }
 
             KeyboardUiSafe.TryApplyBindingTextOnly(__instance, NumpadPressText.ToDisplayName(candidateKey));

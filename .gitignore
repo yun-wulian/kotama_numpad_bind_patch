@@ -2,6 +2,10 @@
 **/bin/
 **/obj/
 
+# Local tooling / decompile scratch
+tools/
+_decompile_*/
+
 # IDE/editor
 .vs/
 .vscode/
@@ -13,4 +17,3 @@
 # OS
 Thumbs.db
 Desktop.ini
-
