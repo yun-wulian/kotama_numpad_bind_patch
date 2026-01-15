@@ -41,3 +41,19 @@ In my local setup, the built DLL is deployed as:
 
 - Implementation notes and the “why” behind the patches live in `IMPLEMENTATION_MEMO.md`.
 - This repo intentionally does not include any game files, BepInEx binaries, or build outputs.
+
+## Troubleshooting
+
+### Settings menu missing / keybind settings corrupted
+
+If the keybind/settings menu disappears (often after force-quitting the game while the keybind UI is waiting for input), your **settings override file** may be corrupted.
+
+You can safely reset *only* the settings/keybind overrides without touching your game save progress by removing/renaming this file:
+
+- `C:\Users\<username>\AppData\LocalLow\AtomStringCompany\KotamaAcademyCitadel\<steamid>\settings.json`
+
+Recommended steps:
+
+1. Exit the game.
+2. Rename `settings.json` to `settings.json.bak` (or delete it).
+3. Launch the game again — it will regenerate a fresh settings file.
