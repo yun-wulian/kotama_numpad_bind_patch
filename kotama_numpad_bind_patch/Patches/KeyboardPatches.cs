@@ -68,41 +68,32 @@ internal static class Patch_Keyboard_SetCurrentBtn
         __state = string.Empty;
         try
         {
-            UI_SettingKeyboard setting = __instance._tbSettingKeyboard;
-            if (setting == null || setting.Id == 0)
-            {
-                return true;
-            }
-
             // During active rebinding, let the game show "输入任意键" without our override text.
-            bool isRebinding = RebindingUiState.IsActiveFor(__instance) || RebindingUiState.IsActiveFor(setting.Id);
+            UI_SettingKeyboard setting = null;
+            try { setting = __instance?._tbSettingKeyboard; } catch { /* ignore */ }
+
+            int settingId = 0;
+            try { settingId = setting?.Id ?? 0; } catch { settingId = 0; }
+
+            bool isRebinding = RebindingUiState.IsActiveFor(__instance) ||
+                (settingId != 0 && RebindingUiState.IsActiveFor(settingId));
             if (isRebinding)
             {
                 return true;
             }
 
-            // Prefer the persisted override key (stable); if it's absent, fall back to `changeData`
-            // because the game may call SetCurrentBtn before SaveOverride/FlushRemapKeyboard.
+            // Prefer the key being applied right now; it is what the game's UI is trying to display.
+            // For patched keys (numpad / mouse side), the native icon table typically lacks sprites,
+            // causing FairyGUI.NTexture..ctor(sprite:null) -> NullReferenceException.
             string candidateKey = string.Empty;
-            try
-            {
-                candidateKey = EscapeGame.UIGen.KeyboardBindingHelper.GetOverride(setting.Id);
-            }
-            catch
-            {
-                // ignore
-            }
-
+            try { candidateKey = changeData?.InputID ?? string.Empty; } catch { candidateKey = string.Empty; }
             if (string.IsNullOrWhiteSpace(candidateKey))
             {
-                try
-                {
-                    candidateKey = changeData?.PressTxt ?? changeData?.InputID ?? string.Empty;
-                }
-                catch
-                {
-                    candidateKey = string.Empty;
-                }
+                try { candidateKey = changeData?.PressTxt ?? string.Empty; } catch { candidateKey = string.Empty; }
+            }
+            if (string.IsNullOrWhiteSpace(candidateKey) && setting != null && setting.Id != 0)
+            {
+                try { candidateKey = EscapeGame.UIGen.KeyboardBindingHelper.GetOverride(setting.Id) ?? string.Empty; } catch { candidateKey = string.Empty; }
             }
 
             if (string.IsNullOrWhiteSpace(candidateKey))
@@ -115,12 +106,22 @@ internal static class Patch_Keyboard_SetCurrentBtn
                 return true;
             }
 
-            // Skip the original implementation for patched keys (numpad / mouse side buttons) to avoid:
-            // FairyGUI.NTexture..ctor(sprite:null) -> NullReferenceException
-            // which causes the UI to remain stuck on "输入任意键".
-            __state = candidateKey;
-            changeData = PatchedDisplay.GetBindingDisData(candidateKey);
-            return true;
+            // For patched keys, do not run the original SetCurrentBtn at all. It may try to build
+            // an icon sprite that doesn't exist and throw, leaving the UI stuck.
+            __state = PatchedPressText.NormalizeToControlPath(candidateKey) ?? candidateKey;
+
+            cfg.TbCfg.InputDisData patchedDisData = null;
+            try { patchedDisData = PatchedDisplay.GetBindingDisData(__state); } catch { patchedDisData = null; }
+            if (patchedDisData != null)
+            {
+                changeData = patchedDisData;
+            }
+
+            try { __instance._bindingData = changeData; } catch { /* ignore */ }
+            try { __instance.CleanCurrentBtn(); } catch { /* ignore */ }
+
+            KeyboardUiSafe.TryApplyBindingTextOnly(__instance, PatchedPressText.ToDisplayName(__state));
+            return false;
         }
         catch
         {

@@ -1,5 +1,6 @@
 using HarmonyLib;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 
 namespace Kotama.NumpadRebind;
 
@@ -27,9 +28,64 @@ internal static class Patch_SettingsMenuKeyboardCtrl_ListenRebindingAnyKey
         try
         {
             string path = context.control?.path;
-            if (!string.IsNullOrEmpty(path) && PatchedPressText.IsPatchedControlPath(path))
+            string normalized = InputPathUtil.NormalizeControlPath(path);
+
+            // The rebinding action is typically bound to "<Keyboard>/anyKey", which means
+            // context.control can often be the "anyKey" control, not the actual key pressed.
+            // In that case, scan the keyboard for the key pressed this frame.
+            if (InputPathUtil.IsAnyKeyPath(normalized))
             {
-                NumpadRebindPlugin.LogSource?.LogInfo($"ListenRebindingAnyKey: controlPath=\"{path}\" displayName=\"{context.control.displayName}\"");
+                try
+                {
+                    Keyboard kb = Keyboard.current;
+                    if (kb != null)
+                    {
+                        foreach (KeyControl key in kb.allKeys)
+                        {
+                            if (key != null && key.wasPressedThisFrame)
+                            {
+                                normalized = InputPathUtil.NormalizeControlPath(key.path);
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                try
+                {
+                    Mouse mouse = Mouse.current;
+                    if (mouse != null)
+                    {
+                        if (mouse.backButton != null && mouse.backButton.wasPressedThisFrame)
+                        {
+                            normalized = InputPathUtil.NormalizeControlPath(mouse.backButton.path);
+                        }
+                        else if (mouse.forwardButton != null && mouse.forwardButton.wasPressedThisFrame)
+                        {
+                            normalized = InputPathUtil.NormalizeControlPath(mouse.forwardButton.path);
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalized) && !InputPathUtil.IsAnyKeyPath(normalized))
+            {
+                RebindingUiState.UpdateLastControlPath(normalized);
+
+                // Keep the log low-noise: only record patched keys + Shift (known issue trigger).
+                if (PatchedPressText.IsPatchedControlPath(normalized) ||
+                    normalized.Contains("Shift", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    NumpadRebindPlugin.LogSource?.LogInfo($"ListenRebindingAnyKey: controlPath=\"{normalized}\" displayName=\"{context.control.displayName}\"");
+                }
             }
         }
         catch

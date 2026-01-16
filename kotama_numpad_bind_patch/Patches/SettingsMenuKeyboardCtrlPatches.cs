@@ -25,6 +25,27 @@ internal static class Patch_SettingsMenuKeyboardCtrl_PreCheckCompositeCanOverrid
 [HarmonyPatch(typeof(EscapeGame.UI.Controls.SettingsMenuKeyboardCtrl), nameof(EscapeGame.UI.Controls.SettingsMenuKeyboardCtrl.SetKeyboardBinding))]
 internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
 {
+    private static bool ShouldUseExternalStore(string formatKey)
+    {
+        if (string.IsNullOrWhiteSpace(formatKey))
+        {
+            return false;
+        }
+
+        if (PatchedPressText.IsPatchedRelated(formatKey) || PatchedPressText.IsPatchedControlPath(formatKey))
+        {
+            return true;
+        }
+
+        // Known unsafe key for the game's setting serializer (breaks Setting.json).
+        if (formatKey.Contains("Shift", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     private static bool Prefix(EscapeGame.UI.Controls.SettingsMenuKeyboardCtrl __instance, string formatKey, EscapeGame.UIGen.Keyboard keyboard, ref bool playUx, ref bool __result)
     {
         if (string.IsNullOrWhiteSpace(formatKey))
@@ -34,19 +55,64 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
             return false;
         }
 
-        if (!PatchedPressText.IsPatchedRelated(formatKey) && !PatchedPressText.IsPatchedControlPath(formatKey))
+        if (!ShouldUseExternalStore(formatKey))
         {
             return true;
         }
 
-        // Keep the game's own UX state for successful binds. We bypass the original failure path,
-        // so leaving playUx intact doesn't trigger the "un-bindable key" hint, but it helps the
-        // menu restore focus/navigation correctly after rebinding.
-
         try
         {
-            if (NumpadBindingSalvage.TryApply(__instance, formatKey, keyboard, playUx))
+            // External-store strategy: apply at runtime, store in our own file, avoid touching Setting.json.
+            string effectiveKey = formatKey;
+            try
             {
+                // The game sometimes gives ambiguous labels like "Numpad" (no digit/operator).
+                // Prefer the actual InputSystem control path we observed during ListenRebindingAnyKey.
+                string lastPath = RebindingUiState.LastControlPath;
+                if (!string.IsNullOrWhiteSpace(lastPath) && !InputPathUtil.IsAnyKeyPath(lastPath))
+                {
+                    if (string.Equals(effectiveKey, "Numpad", StringComparison.OrdinalIgnoreCase) ||
+                        effectiveKey.Contains("Shift", StringComparison.OrdinalIgnoreCase))
+                    {
+                        effectiveKey = lastPath;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            effectiveKey = InputPathUtil.NormalizeControlPath(effectiveKey);
+
+            if (NumpadBindingSalvage.TryApply(__instance, effectiveKey, keyboard, playUx, persistToSettings: false))
+            {
+                cfg.UI_SettingKeyboard setting = null;
+                try { setting = keyboard?._tbSettingKeyboard; } catch { /* ignore */ }
+
+                int cnfId = setting?.Id ?? 0;
+                string inputActionName = keyboard?._inputActionName ?? string.Empty;
+                string originKey = keyboard?._originBindingBtn ?? string.Empty;
+                bool applyAllMaps = setting != null && setting.Action != null && setting.Action.IsAllOverride;
+
+                if (cnfId != 0)
+                {
+                    string key = effectiveKey;
+                    if (PatchedPressText.IsPatchedRelated(key) || PatchedPressText.IsPatchedControlPath(key))
+                    {
+                        key = PatchedPressText.NormalizeToControlPath(key);
+                    }
+
+                    ExternalBindingsStore.Upsert(new ExternalBindingsStore.Entry
+                    {
+                        CnfId = cnfId,
+                        Key = key,
+                        InputActionName = inputActionName,
+                        OriginKey = originKey,
+                        ApplyAllMaps = applyAllMaps
+                    });
+                }
+
                 __result = true;
                 return false;
             }
@@ -62,6 +128,33 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
         return false;
     }
 
+    private static void Postfix(string formatKey, EscapeGame.UIGen.Keyboard keyboard, ref bool __result)
+    {
+        // If the user binds a *native* key successfully, drop any external mapping for this cnfId.
+        if (!__result)
+        {
+            return;
+        }
+
+        if (ShouldUseExternalStore(formatKey))
+        {
+            return;
+        }
+
+        try
+        {
+            int cnfId = keyboard?._tbSettingKeyboard?.Id ?? 0;
+            if (cnfId != 0)
+            {
+                ExternalBindingsStore.Remove(cnfId);
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
     private static void Postfix_NoOp(EscapeGame.UI.Controls.SettingsMenuKeyboardCtrl __instance, string formatKey, EscapeGame.UIGen.Keyboard keyboard, bool playUx, ref bool __result)
     {
         if (__result)
@@ -69,7 +162,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SetKeyboardBinding
             return;
         }
 
-        if (!PatchedPressText.IsPatchedRelated(formatKey) && !PatchedPressText.IsPatchedControlPath(formatKey))
+        if (!ShouldUseExternalStore(formatKey))
         {
             return;
         }
@@ -89,6 +182,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SwitchRebindingListen
                 IntPtr rebindingKeyboardPtr = RebindingUiState.ActiveKeyboardPtr;
                 RebindingUiState.ActiveCnfId = 0;
                 RebindingUiState.ActiveKeyboardPtr = IntPtr.Zero;
+                RebindingUiState.ClearLastControl();
 
                 // Rebinding is ending: refresh the active row to show the stored override text,
                 // now that the game's "press any key" prompt should be cleared.
@@ -179,6 +273,7 @@ internal static class Patch_SettingsMenuKeyboardCtrl_SwitchRebindingListen
 
             RebindingUiState.ActiveCnfId = cnfId;
             RebindingUiState.ActiveKeyboardPtr = current?.Pointer ?? IntPtr.Zero;
+            RebindingUiState.ClearLastControl();
 
             // Avoid double-text overlap: if the current row previously displayed our text
             // (on the binding button), clear it while the game shows "输入任意键".

@@ -7,8 +7,23 @@ internal static class NumpadBindingSalvage
 {
     public static bool TryApply(EscapeGame.UI.Controls.SettingsMenuKeyboardCtrl ctrl, string formatKey, EscapeGame.UIGen.Keyboard keyboard, bool playUx)
     {
+        return TryApply(ctrl, formatKey, keyboard, playUx, persistToSettings: true);
+    }
+
+    public static bool TryApply(EscapeGame.UI.Controls.SettingsMenuKeyboardCtrl ctrl, string formatKey, EscapeGame.UIGen.Keyboard keyboard, bool playUx, bool persistToSettings)
+    {
         if (ctrl == null || keyboard == null)
         {
+            return false;
+        }
+
+        // Normalize InputSystem absolute paths ("/Keyboard/...") to layout paths ("<Keyboard>/...").
+        formatKey = InputPathUtil.NormalizeControlPath(formatKey);
+
+        // Never attempt to bind to "anyKey" or ambiguous labels like "Numpad".
+        if (InputPathUtil.IsAnyKeyPath(formatKey) || string.Equals(formatKey, "Numpad", StringComparison.OrdinalIgnoreCase))
+        {
+            NumpadRebindPlugin.LogSource?.LogWarning($"Rejecting invalid binding key: \"{formatKey}\"");
             return false;
         }
 
@@ -43,6 +58,12 @@ internal static class NumpadBindingSalvage
                     $"Key conflict: \"{formatKey}\" is already used by cnfId={alreadyId}. Resetting the existing binding first.");
 
                 ctrl.ResetKeyboard(formatKey, already);
+
+                // In external-store mode we must also clear the previous entry so we don't replay duplicates on restart.
+                if (!persistToSettings && alreadyId != 0 && alreadyId != cnfId)
+                {
+                    ExternalBindingsStore.Remove(alreadyId);
+                }
             }
         }
         catch (Exception exConflict)
@@ -64,8 +85,11 @@ internal static class NumpadBindingSalvage
         var map = new Il2CppSystem.Collections.Generic.Dictionary<int, string>();
         map.Add(cnfId, formatKey);
 
-        EscapeGame.UIGen.KeyboardBindingHelper.SaveOverride(cnfId, formatKey);
-        EscapeGame.UIGen.KeyboardBindingHelper.FlushRemapKeyboard(map);
+        if (persistToSettings)
+        {
+            EscapeGame.UIGen.KeyboardBindingHelper.SaveOverride(cnfId, formatKey);
+            EscapeGame.UIGen.KeyboardBindingHelper.FlushRemapKeyboard(map);
+        }
 
         try
         {

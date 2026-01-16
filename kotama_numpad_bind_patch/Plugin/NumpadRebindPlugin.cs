@@ -10,7 +10,7 @@ public sealed class NumpadRebindPlugin : BasePlugin
 {
     public const string PluginGuid = "com.yunwulian.kotama.numpad-rebind";
     public const string PluginName = "Kotama Numpad Rebind";
-    public const string PluginVersion = "0.2.17";
+    public const string PluginVersion = "0.3.0";
 
     internal static ManualLogSource LogSource;
 
